@@ -3,6 +3,8 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
 <title>Self‑Server (Service Worker) — GitHub Pages</title>
+<!-- ВАЖНО: base гарантирует, что относительные URL (sw.js, api/...) идут из текущей папки репозитория -->
+<base href="./">
 <style>
 :root{--bg:#0e1422;--fg:#e8eefc;--card:#121a2c;--line:#26324e;--btn:#2d6cdf}
 body{margin:0;min-height:100vh;display:grid;place-items:center;background:var(--bg);color:var(--fg);font-family:system-ui,Arial,sans-serif}
@@ -26,8 +28,9 @@ pre{background:#0b1220;border:1px solid var(--line);border-radius:12px;padding:1
 <button id="save">💾 POST api/save/:key</button>
 <button id="load">📖 GET api/load/:key</button>
 <button id="reload">⟳ Перезагрузить</button>
+<button id="reset">🧹 Unregister SW + Clear caches</button>
 </div>
-<p>Нажмите «Старт сервера», чтобы зарегистрировать <b>Service Worker</b>. Он перехватит запросы в пределах текущего каталога (repo‑path) и будет работать как локальный API. Поддержка CORS включена.</p>
+<p>Нажмите «Старт сервера», чтобы зарегистрировать <b>Service Worker</b>. Он перехватит запросы в пределах текущей папки и будет работать как локальный API. CORS включён.</p>
 <h3>Вывод</h3>
 <pre id="out">—</pre>
 </div>
@@ -36,18 +39,8 @@ pre{background:#0b1220;border:1px solid var(--line);border-radius:12px;padding:1
 <script>
 const out = document.getElementById('out');
 const mode = document.getElementById('mode');
-const log = (s)=> out.textContent = (out.textContent==='—'? '' : out.textContent+'\n') + s;
-
-
-// БАЗОВЫЙ ПУТЬ для GitHub Pages / обычного хостинга
-// Например: https://user.github.io/repo/ => BASE "/repo/"
-const BASE = (function(){
-const p = location.pathname;
-return /\/$/.test(p) ? p : p.replace(/[^\/]+$/, '');
-})();
-
-
-function isControlled(){ return !!(navigator.serviceWorker && navigator.serviceWorker.controller); }
+const log = (s) => out.textContent = (out.textContent === '—' ? '' : out.textContent + '
+') + s; }
 function updateMode(){ mode.textContent = 'Режим: ' + (isControlled()? 'обслуживается Service Worker' : 'обычная страница'); }
 updateMode();
 
@@ -55,22 +48,32 @@ updateMode();
 document.getElementById('reload').onclick = ()=> location.reload();
 
 
+document.getElementById('reset').onclick = async ()=>{
+if (!('serviceWorker' in navigator)) return;
+const regs = await navigator.serviceWorker.getRegistrations();
+for (const r of regs) await r.unregister();
+if (window.caches) { const keys = await caches.keys(); for (const k of keys) await caches.delete(k); }
+log('SW и Cache очищены. Перезагружаю...');
+setTimeout(()=>location.reload(), 300);
+};
+
+
 document.getElementById('start').onclick = async () => {
 if (!('serviceWorker' in navigator)) { log('SW не поддерживается'); return; }
 try {
-const swUrl = new URL('sw.js', location.href).toString();
-log('Регистрирую: '+ swUrl + ' (scope='+BASE+')');
-const reg = await navigator.serviceWorker.register(swUrl, { scope: BASE });
+// Регистрируем sw.js в ТЕКУЩЕЙ папке, scope=./ ограничивает на каталог
+const reg = await navigator.serviceWorker.register('sw.js', { scope: './' });
 await navigator.serviceWorker.ready;
+
+
+// Если вкладка ещё не под контролем — ждём controllerchange
+if (!navigator.serviceWorker.controller) {
+await new Promise(resolve => navigator.serviceWorker.addEventListener('controllerchange', resolve, { once:true }));
+}
+
+
+// Просим SW сразу забрать клиентов (на всякий случай)
 reg.active?.postMessage({ type: 'CLAIM' });
-setTimeout(()=> location.reload(), 300);
-} catch (e) { log('Ошибка регистрации SW: ' + e); }
-};
 
 
-document.getElementById('run').onclick = async () => {
-out.textContent = '—';
-const r = await fetch(BASE + 'api/run', { method:'POST' });
-log(await r.text());
-};
-</html>
+  </html>
