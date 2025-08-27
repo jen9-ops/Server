@@ -1,3 +1,8 @@
+
+https://jen9-ops.github.io/Server/
+
+
+
 # Self‑Server (Service Worker) — для GitHub Pages
 
 
